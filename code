@@ -1,0 +1,10 @@
+Matrix::writeMM(filtered@assays$RNA@layers$counts, file = "./RNA_counts.mtx")
+readr::write_csv(filtered@meta.data,
+                 file = "./cell_metadata.csv",
+                 col_names = TRUE)
+readr::write_csv(data.frame(cell = colnames(filtered)), 
+                 file = "./cells.csv", 
+                 col_names = TRUE)
+readr::write_csv(data.frame(gene = rownames(filtered)), 
+                 file = "./genes.csv", 
+                 col_names = FALSE)
