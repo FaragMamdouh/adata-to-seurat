@@ -1,1 +1,12 @@
+with open('matrix_files/barcodes.tsv', 'w') as f:
+    for item in adata.obs_names:
+        f.write(item + '\n')
 
+
+with open('matrix_files/features.tsv', 'w') as f:
+    for item in ['\t'.join([x,x,'Gene Expression']) for x in adata.var_names]:
+        f.write(item + '\n')
+
+io.mmwrite('matrix_files/matrix', adata.X.T)
+
+adata.obs.to_csv('metadata.csv')
