@@ -10,3 +10,8 @@ with open('matrix_files/features.tsv', 'w') as f:
 io.mmwrite('matrix_files/matrix', adata.X.T)
 
 adata.obs.to_csv('metadata.csv')
+
+
+gzip matrix_files/barcodes.tsv
+gzip matrix_files/features.tsv
+gzip matrix_files/matrix.mtx
