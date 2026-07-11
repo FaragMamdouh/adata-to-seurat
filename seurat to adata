@@ -1,10 +1,43 @@
-Matrix::writeMM(filtered@assays$RNA@layers$counts, file = "./RNA_counts.mtx")
-readr::write_csv(filtered@meta.data,
-                 file = "./cell_metadata.csv",
-                 col_names = TRUE)
-readr::write_csv(data.frame(cell = colnames(filtered)), 
+Matrix::writeMM(all@assays$RNA@layers$counts, file = "./RNA_counts.mtx")
+readr::write_csv(
+  tibble::rownames_to_column(all@meta.data, var = "cell"),
+  file = "./cell_metadata.csv"
+)
+
+readr::write_csv(data.frame(cell = colnames(all)), 
                  file = "./cells.csv", 
-                 col_names = TRUE)
-readr::write_csv(data.frame(gene = rownames(filtered)), 
+                 col_names = TRUE, )
+readr::write_csv(data.frame(gene = rownames(all)), 
                  file = "./genes.csv", 
                  col_names = FALSE)
+
+
+
+
+os.chdir("/Volumes/BCP-ALL/Normal Dataset/thymus/integratedALL")
+
+
+
+# Read count matrix (genes × cells)
+X = scipy.io.mmread("RNA_counts.mtx").tocsr()
+
+# Read metadata
+obs = pd.read_csv("cell_metadata.csv", index_col=0)
+
+# Read cell names
+cells = pd.read_csv("cells.csv")
+cells = cells.iloc[:, 0].astype(str)
+
+# Read gene names
+genes = pd.read_csv("genes.csv", header=None)
+genes = genes.iloc[:, 0].astype(str)
+
+# Make sure metadata matches cell order
+obs = obs.loc[cells]
+
+# Create AnnData
+adata = ad.AnnData(
+    X=X.T,  # transpose because Matrix Market is genes × cells
+    obs=obs,
+    var=pd.DataFrame(index=genes)
+)
