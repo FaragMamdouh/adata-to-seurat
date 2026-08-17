@@ -1,0 +1,123 @@
+library(Seurat)
+library(Matrix)
+library(readr)
+library(tibble)
+
+setwd("/Volumes/BCP-ALL/Normal Dataset/thymus/integratedALL")
+
+obj <- Thy_integrated  # your object
+
+# --- counts and data (genes x cells) ---
+Matrix::writeMM(obj@assays$RNA@layers$counts, file = "./RNA_counts.mtx")
+Matrix::writeMM(obj@assays$RNA@layers$data,   file = "./RNA_data.mtx")
+
+# scale.data is usually only computed on variable features -> own gene list
+scale_mat <- obj@assays$RNA@layers$scale.data
+if (!is.null(scale_mat)) {
+  Matrix::writeMM(as(scale_mat, "sparseMatrix"), file = "./RNA_scaledata.mtx")
+  # scale.data loses dimnames in the layer slot in Seurat v5 -- pull from the assay
+  write_csv(data.frame(gene = rownames(obj@assays$RNA@layers$scale.data <- scale_mat)),
+            file = "./genes_scaledata.csv", col_names = FALSE)
+}
+
+# --- cell metadata ---
+write_csv(rownames_to_column(obj@meta.data, var = "cell"),
+          file = "./cell_metadata.csv")
+
+write_csv(data.frame(cell = colnames(obj)),
+          file = "./cells.csv", col_names = TRUE)
+
+write_csv(data.frame(gene = rownames(obj)),
+          file = "./genes.csv", col_names = FALSE)
+
+# --- dimensional reductions ---
+write_csv(as.data.frame(Embeddings(obj, "pca")) |> rownames_to_column("cell"),
+          file = "./pca_embeddings.csv")
+write_csv(as.data.frame(Embeddings(obj, "umap")) |> rownames_to_column("cell"),
+          file = "./umap_embeddings.csv")
+
+# --- SCT and integrated assays (optional, if you want them as extra layers) ---
+Matrix::writeMM(obj@assays$SCT@layers$data, file = "./SCT_data.mtx")
+write_csv(data.frame(gene = rownames(obj@assays$SCT)), file = "./genes_SCT.csv", col_names = FALSE)
+
+Matrix::writeMM(obj@assays$integrated@layers$data, file = "./integrated_data.mtx")
+write_csv(data.frame(gene = rownames(obj@assays$integrated)), file = "./genes_integrated.csv", col_names = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import os
+import scipy.io
+import scipy.sparse
+import pandas as pd
+import anndata as ad
+
+os.chdir("/Volumes/BCP-ALL/Normal Dataset/thymus/integratedALL")
+
+# --- counts (genes x cells) ---
+X_counts = scipy.io.mmread("RNA_counts.mtx").tocsr()
+X_data   = scipy.io.mmread("RNA_data.mtx").tocsr()
+
+# --- metadata ---
+obs = pd.read_csv("cell_metadata.csv", index_col=0)
+cells = pd.read_csv("cells.csv").iloc[:, 0].astype(str)
+genes = pd.read_csv("genes.csv", header=None).iloc[:, 0].astype(str)
+
+obs.index = obs.index.astype(str)
+obs = obs.loc[cells]
+
+# --- build AnnData: counts as X, data (lognorm) as a layer ---
+adata = ad.AnnData(
+    X=X_counts.T,
+    obs=obs,
+    var=pd.DataFrame(index=genes),
+)
+adata.layers["counts"] = X_counts.T
+adata.layers["data"]   = X_data.T
+
+# --- scale.data (subset of genes) as a separate layer, aligned by gene name ---
+if os.path.exists("RNA_scaledata.mtx"):
+    X_scale = scipy.io.mmread("RNA_scaledata.mtx").tocsr()
+    genes_scale = pd.read_csv("genes_scaledata.csv", header=None).iloc[:, 0].astype(str)
+    scale_df = pd.DataFrame.sparse.from_spmatrix(
+        X_scale.T, index=cells.values, columns=genes_scale
+    )
+    # reindex to full gene set, filling missing genes with NaN
+    adata.layers["scale_data"] = scale_df.reindex(columns=adata.var_names).values
+
+# --- dimensional reductions ---
+pca = pd.read_csv("pca_embeddings.csv", index_col=0).loc[cells]
+umap = pd.read_csv("umap_embeddings.csv", index_col=0).loc[cells]
+adata.obsm["X_pca"] = pca.values
+adata.obsm["X_umap"] = umap.values
+
+# --- SCT / integrated as separate AnnData objects (different var sets) ---
+def load_assay(mtx_path, genes_path, cells):
+    X = scipy.io.mmread(mtx_path).tocsr()
+    g = pd.read_csv(genes_path, header=None).iloc[:, 0].astype(str)
+    a = ad.AnnData(X=X.T, var=pd.DataFrame(index=g))
+    a.obs_names = cells.values
+    return a
+
+adata_sct = load_assay("SCT_data.mtx", "genes_SCT.csv", cells)
+adata_integrated = load_assay("integrated_data.mtx", "genes_integrated.csv", cells)
+
+# stash them if useful downstream
+adata.uns["sct_var_names"] = list(adata_sct.var_names)
+adata.uns["integrated_var_names"] = list(adata_integrated.var_names)
